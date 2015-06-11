@@ -13,8 +13,6 @@ from mbutil import mbtiles_to_disk, disk_to_mbtiles
 
 if __name__ == '__main__':
 
-    logging.basicConfig(level=logging.DEBUG)
-
     parser = OptionParser(usage="""usage: %prog [options] input output
     
     Examples:
@@ -25,6 +23,11 @@ if __name__ == '__main__':
     Import a directory of tiles into an mbtiles file:
     $ mb-util tiles world.mbtiles # mbtiles file must not already exist""")
     
+    parser.add_option("-d", "--debug", action="store_true", dest="debug",
+                      help="Turn on debug logging")
+    parser.add_option("-q", "--quiet", action="store_true", dest="quiet",
+                      help="turn off all logging")
+
     parser.add_option('--scheme', dest='scheme',
         help='''Tiling scheme of the tiles. Default is "xyz" (z/x/y),
             other options are "tms" which is also z/x/y
@@ -44,7 +47,37 @@ if __name__ == '__main__':
             you can remove callbacks specifying --grid_callback="" ''',
         default='grid')
 
+    parser.add_option('--bbox', dest='bbox',
+        help='''bounding box in W,S,E,N format''')
+
+    parser.add_option('--zoom', dest='zoom',
+                      help='''Zoom range, minzoom-maxzoom''')
+
     (options, args) = parser.parse_args()
+
+    logging.basicConfig(level=logging.DEBUG if options.debug else
+    (logging.ERROR if options.quiet else logging.INFO))
+
+    #validate BBOX
+    if options.bbox:
+        bbox_values = options.bbox.split(",")
+        if len(bbox_values) != 4:
+            logging.error("BBOX must have 4 values")
+            sys.exit(-1)
+        bbox = [float(f) for f in bbox_values]
+        if abs(bbox[0]) > 180 or abs(bbox[2]) > 180:
+            logging.error("Longitude out of range")
+            sys.exit(-1)
+        if abs(bbox[1]) > 85 or abs(bbox[3]) > 85:
+            logging.error("Latitude out of range")
+            sys.exit(-1)
+        options.bbox = bbox
+
+    if options.zoom:
+        zoom_values = options.zoom.split("-")
+        zoom_values = [int(f) for f in zoom_values]
+        zoom_range = range(zoom_values[0], zoom_values[1] + 1)
+        options.zoom_range = zoom_range
 
     # Transfer operations
     if len(args) != 2:

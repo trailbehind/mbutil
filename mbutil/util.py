@@ -10,6 +10,7 @@
 # https://github.com/mapbox/node-mbtiles/blob/master/lib/schema.sql
 
 import sqlite3, uuid, sys, logging, time, os, json, zlib, re
+from proj import GoogleProjection
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,18 @@ def disk_to_mbtiles(directory_path, mbtiles_file, **kwargs):
     start_time = time.time()
     msg = ""
 
+    tile_range = None
+    if 'bbox' in kwargs:
+        bounds_string = ",".join([str(f) for f in kwargs['bbox']])
+        cur.execute('delete from metadata where name = ?', ('bounds',))        
+        cur.execute('insert into metadata (name, value) values (?, ?)',
+            ('bounds', bounds_string))
+        logger.info("Using bbox " + bounds_string)
+        zoom_range = kwargs.get("zoom_range", range(0, 22))
+        proj = GoogleProjection(256, zoom_range, "tms")
+        tile_range = proj.tileranges(kwargs['bbox'])
+        logger.debug(tile_range)
+
     for zoomDir in getDirs(directory_path):
         if kwargs.get("scheme") == 'ags':
             if not "L" in zoomDir:
@@ -168,7 +181,16 @@ def disk_to_mbtiles(directory_path, mbtiles_file, **kwargs):
         else:
             if "L" in zoomDir:
                 logger.warning("You appear to be using a %s scheme on an arcgis Server cache. Try using --scheme=ags instead" % kwargs.get("scheme"))
-            z = int(zoomDir)
+            try:
+                z = int(zoomDir)
+            except:
+                logger.info("Skipping dir " + zoomDir)
+                continue
+
+        if tile_range and not z in tile_range:
+            logger.debug('Skipping zoom level %i' % (z,))
+            continue
+
         for rowDir in getDirs(os.path.join(directory_path, zoomDir)):
             if kwargs.get("scheme") == 'ags':
                 y = flip_y(z, int(rowDir.replace("R", ""), 16))
@@ -185,6 +207,12 @@ def disk_to_mbtiles(directory_path, mbtiles_file, **kwargs):
                     x = int(file_name.replace("C", ""), 16)
                 else:
                     y = int(file_name)
+
+                if tile_range:
+                    r = tile_range[z]
+                    if x < r['x'][0] or x > r['x'][1] or y < r['y'][0] or y > r['y'][1]:
+                        logger.debug(' Skipping tile Zoom (z): %i\tCol (x): %i\tRow (y): %i' % (z, x, y))
+                        continue
 
                 if (ext == image_format):
                     logger.debug(' Read tile from Zoom (z): %i\tCol (x): %i\tRow (y): %i' % (z, x, y))
