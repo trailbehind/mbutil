@@ -194,6 +194,8 @@ def disk_to_mbtiles(directory_path, mbtiles_file, **kwargs):
         for rowDir in getDirs(os.path.join(directory_path, zoomDir)):
             if kwargs.get("scheme") == 'ags':
                 y = flip_y(z, int(rowDir.replace("R", ""), 16))
+            elif kwargs.get("scheme") == 'zyx':
+                y = flip_y(z, int(rowDir))
             else:
                 x = int(rowDir)
             for current_file in os.listdir(os.path.join(directory_path, zoomDir, rowDir)):
@@ -205,6 +207,8 @@ def disk_to_mbtiles(directory_path, mbtiles_file, **kwargs):
                     y = flip_y(int(z), int(file_name))
                 elif kwargs.get("scheme") == 'ags':
                     x = int(file_name.replace("C", ""), 16)
+                elif kwargs.get("scheme") == 'zyx':
+                    x = int(file_name)
                 else:
                     y = int(file_name)
 
