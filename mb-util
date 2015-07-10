@@ -71,6 +71,12 @@ if __name__ == '__main__':
         if abs(bbox[1]) > 85 or abs(bbox[3]) > 85:
             logging.error("Latitude out of range")
             sys.exit(-1)
+        if bbox[0] > bbox[2]:
+            logging.error("West component of BBOX is greater than East component. BBOXes that cross the antimeridian are not currently supported.")
+            sys.exit(-1)
+        if bbox[1] > bbox[3]:
+            logging.error("South component of BBOX is greater than North component. This is an error.")
+            sys.exit(-1)
         options.bbox = bbox
 
     if options.zoom:
