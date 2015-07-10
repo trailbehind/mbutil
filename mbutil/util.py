@@ -171,7 +171,10 @@ def disk_to_mbtiles(directory_path, mbtiles_file, **kwargs):
         zoom_range = kwargs.get("zoom_range", range(0, 22))
         proj = GoogleProjection(256, zoom_range, "tms")
         tile_range = proj.tileranges(kwargs['bbox'])
-        logger.debug(tile_range)
+        for z in sorted(tile_range.keys()):
+            logger.info("z:%i x:%i-%i y:%i-%i" % (z,
+                tile_range[z]['x'][0], tile_range[z]['x'][1],
+                tile_range[z]['y'][0], tile_range[z]['y'][1]))
 
     for zoomDir in getDirs(directory_path):
         if kwargs.get("scheme") == 'ags':
