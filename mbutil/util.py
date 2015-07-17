@@ -107,7 +107,7 @@ def disk_to_mbtiles(directory_path, mbtiles_file, **kwargs):
     msg = ""
 
     tile_range = None
-    if 'bbox' in kwargs:
+    if 'bbox' in kwargs and kwargs['bbox'] is not None:
         bounds_string = ",".join([str(f) for f in kwargs['bbox']])
         cur.execute('delete from metadata where name = ?', ('bounds',))        
         cur.execute('insert into metadata (name, value) values (?, ?)',
