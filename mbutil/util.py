@@ -44,95 +44,40 @@ def mbtiles_connect(mbtiles_file):
         logger.exception(e)
         sys.exit(1)
 
-def optimize_connection(cur):
-    cur.execute("""PRAGMA synchronous=0""")
-    cur.execute("""PRAGMA locking_mode=EXCLUSIVE""")
-    cur.execute("""PRAGMA journal_mode=DELETE""")
+def optimize_connection(cur, wal_journal=False, synchronous_off=False, exclusive_lock=True):
+    cur.execute("PRAGMA cache_size = 40000")
+    cur.execute("PRAGMA temp_store = memory")
 
-def compression_prepare(cur, con):
-    cur.execute("""
-      CREATE TABLE if not exists images (
-        tile_data blob,
-        tile_id VARCHAR(256));
-    """)
-    cur.execute("""
-      CREATE TABLE if not exists map (
-        zoom_level integer,
-        tile_column integer,
-        tile_row integer,
-        tile_id VARCHAR(256));
-    """)
+    if wal_journal:
+        cur.execute("PRAGMA journal_mode = WAL")
+    else:
+        try:
+            cur.execute("PRAGMA journal_mode = DELETE")
+        except sqlite3.OperationalError:
+            pass
 
-def optimize_database(cur):
-    logger.debug('analyzing db')
-    cur.execute("""ANALYZE;""")
-    logger.debug('cleaning db')
-    cur.execute("""VACUUM;""")
+    if exclusive_lock:
+        cur.execute("PRAGMA locking_mode = EXCLUSIVE")
 
-def compression_do(cur, con, chunk):
-    overlapping = 0
-    unique = 0
-    total = 0
-    cur.execute("select count(zoom_level) from tiles")
-    res = cur.fetchone()
-    total_tiles = res[0]
-    logging.debug("%d total tiles to fetch" % total_tiles)
-    for i in range(total_tiles // chunk + 1):
-        logging.debug("%d / %d rounds done" % (i, (total_tiles / chunk)))
-        ids = []
-        files = []
-        start = time.time()
-        cur.execute("""select zoom_level, tile_column, tile_row, tile_data
-            from tiles where rowid > ? and rowid <= ?""", ((i * chunk), ((i + 1) * chunk)))
-        logger.debug("select: %s" % (time.time() - start))
-        rows = cur.fetchall()
-        for r in rows:
-            total = total + 1
-            if r[3] in files:
-                overlapping = overlapping + 1
-                start = time.time()
-                query = """insert into map
-                    (zoom_level, tile_column, tile_row, tile_id)
-                    values (?, ?, ?, ?)"""
-                logger.debug("insert: %s" % (time.time() - start))
-                cur.execute(query, (r[0], r[1], r[2], ids[files.index(r[3])]))
-            else:
-                unique = unique + 1
-                id = str(uuid.uuid4())
+    if synchronous_off:
+        cur.execute("PRAGMA synchronous = OFF")
 
-                ids.append(id)
-                files.append(r[3])
+def optimize_database(cur, skip_analyze=False, skip_vacuum=False):
+    if not skip_analyze:
+        logger.info('analyzing db')
+        cur.execute("""ANALYZE""")
 
-                start = time.time()
-                query = """insert into images
-                    (tile_id, tile_data)
-                    values (?, ?)"""
-                cur.execute(query, (str(id), sqlite3.Binary(r[3])))
-                logger.debug("insert into images: %s" % (time.time() - start))
-                start = time.time()
-                query = """insert into map
-                    (zoom_level, tile_column, tile_row, tile_id)
-                    values (?, ?, ?, ?)"""
-                cur.execute(query, (r[0], r[1], r[2], id))
-                logger.debug("insert into map: %s" % (time.time() - start))
-        con.commit()
+    if not skip_vacuum:
+        logger.info('cleaning db')
+        cur.execute("""VACUUM""")
 
-def compression_finalize(cur):
-    cur.execute("""drop table tiles;""")
-    cur.execute("""create view tiles as
-        select map.zoom_level as zoom_level,
-        map.tile_column as tile_column,
-        map.tile_row as tile_row,
-        images.tile_data as tile_data FROM
-        map JOIN images on images.tile_id = map.tile_id;""")
-    cur.execute("""
-          CREATE UNIQUE INDEX map_index on map
-            (zoom_level, tile_column, tile_row);""")
-    cur.execute("""
-          CREATE UNIQUE INDEX images_id on images
-            (tile_id);""")
-    cur.execute("""vacuum;""")
-    cur.execute("""analyze;""")
+def optimize_database_file(mbtiles_file, skip_analyze=False, skip_vacuum=False, wal_journal=False):
+    con = mbtiles_connect(mbtiles_file)
+    cur = con.cursor()
+    optimize_connection(cur, wal_journal)
+    optimize_database(cur, skip_analyze, skip_vacuum)
+    con.commit()
+    con.close()
 
 def getDirs(path):
     return [name for name in os.listdir(path)

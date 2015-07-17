@@ -9,7 +9,8 @@
 import logging, os, sys
 from optparse import OptionParser
 
-from mbutil import mbtiles_to_disk, disk_to_mbtiles
+from mbutil import mbtiles_to_disk, disk_to_mbtiles, optimize_database_file
+from mbutil.util_compact import compact_mbtiles
 
 if __name__ == '__main__':
 
@@ -55,6 +56,11 @@ if __name__ == '__main__':
     parser.add_option('--zoom', dest='zoom',
                       help='''Zoom range, minzoom-maxzoom''')
 
+    parser.add_option("--compact",
+        dest='compact', action="store_true",
+        help='''Eliminate duplicate images to reduce mbtiles filesize.''',
+        default=False)
+
     (options, args) = parser.parse_args()
 
     logging.basicConfig(level=logging.DEBUG if options.debug else
@@ -90,6 +96,14 @@ if __name__ == '__main__':
         zoom_range = range(zoom_values[0], zoom_values[1] + 1)
         options.zoom_range = zoom_range
 
+    if options.compact:
+        if not os.path.isfile(args[0]):
+            sys.stderr.write('The mbtiles database to compact must exist.\n')
+            sys.exit(1)
+        compact_mbtiles(args[0], **options.__dict__)
+        optimize_database_file(args[0])
+        sys.exit(0)
+        
     # Transfer operations
     if len(args) != 2:
         parser.print_help()
